@@ -3,6 +3,11 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <netinet/in.h>
+#include <net/if.h>
 
 #define INIT_SIZE 8
 
@@ -104,6 +109,26 @@ void get_my_mac_address(char* interface, mac_addr* packet) {
     fclose(fp);
 }
 
+void get_my_ip_address(char* interface, arp_packet* packet) {
+    int fd;
+    struct ifreq ifr;
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    ifr.ifr_addr.sa_family = AF_INET;
+
+    strncpy(ifr.ifr_name, interface, IFNAMSIZ-1);
+
+    ioctl(fd, SIOCGIFADDR, &ifr);
+
+    close(fd);
+    char** tmp = split(inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr), '.');
+        packet->senderIp[0] = atoi(tmp[0]);
+        packet->senderIp[1] = atoi(tmp[1]);
+        packet->senderIp[2] = atoi(tmp[2]);
+        packet->senderIp[3] = atoi(tmp[3]);
+}
+
 // get my ip address
 
 // get target mac address with arp request
@@ -126,11 +151,7 @@ int main(int argc, char* argv[]) {
         packet.hardware_protocolSize = htons(0x0604);
         packet.opcode = htons(0x0001);
         get_my_mac_address(argv[1], &packet.senderMac);
-        tmp = split(argv[i + 1], '.');
-        packet.senderIp[0] = atoi(tmp[0]);
-        packet.senderIp[1] = atoi(tmp[1]);
-        packet.senderIp[2] = atoi(tmp[2]);
-        packet.senderIp[3] = atoi(tmp[3]);
+        get_my_ip_address(argv[1], &packet);
         for(int i = 0; i < 6; i++) packet.targetMac.oct[i] = 0x00;
         tmp = split(argv[i], '.');
         packet.targetIp[0] = atoi(tmp[0]);
@@ -154,6 +175,11 @@ int main(int argc, char* argv[]) {
             packet.dest.oct[i] = res[i];
             packet.targetMac.oct[i] = res[i];
         }
+        tmp = split(argv[i + 1], '.');
+        packet.senderIp[0] = atoi(tmp[0]);
+        packet.senderIp[1] = atoi(tmp[1]);
+        packet.senderIp[2] = atoi(tmp[2]);
+        packet.senderIp[3] = atoi(tmp[3]);
         pcap_sendpacket(handle, (const u_char*)&packet, sizeof(packet));
         
         pcap_close(handle);
